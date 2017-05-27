@@ -2,7 +2,7 @@ package archiver
 
 import (
 	"archive/tar"
-	"fmt"
+	"io"
 	"os"
 	"strings"
 
@@ -13,7 +13,7 @@ import (
 var TarSz tarSzFormat
 
 func init() {
-	RegisterFormat("TarSz", TarSz)
+	RegisterFormatReaderWriter("TarSz", TarSz)
 }
 
 type tarSzFormat struct{}
@@ -41,35 +41,22 @@ func isTarSz(tarszPath string) bool {
 	return hasTarHeader(buf)
 }
 
-// Make creates a .tar.sz file at tarszPath containing
-// the contents of files listed in filePaths. File paths
-// can be those of regular files or directories. Regular
-// files are stored at the 'root' of the archive, and
-// directories are recursively added.
-func (tarSzFormat) Make(tarszPath string, filePaths []string) error {
-	out, err := os.Create(tarszPath)
-	if err != nil {
-		return fmt.Errorf("error creating %s: %v", tarszPath, err)
-	}
-	defer out.Close()
-
+// MakeWriter writes the contents of files listed in filePaths in .tar.sz
+// format. File paths can be those of regular files or directories. Regular
+// files are stored at the 'root' of the archive, and directories are
+// recursively added.
+func (tarSzFormat) MakeWriter(out io.Writer, filePaths []string, exclusions []string) error {
 	szWriter := snappy.NewBufferedWriter(out)
 	defer szWriter.Close()
 
 	tarWriter := tar.NewWriter(szWriter)
 	defer tarWriter.Close()
 
-	return tarball(filePaths, tarWriter, tarszPath)
+	return tarball(filePaths, tarWriter, exclusions)
 }
 
-// Open untars source and decompresses the contents into destination.
-func (tarSzFormat) Open(source, destination string) error {
-	f, err := os.Open(source)
-	if err != nil {
-		return fmt.Errorf("%s: failed to open archive: %v", source, err)
-	}
-	defer f.Close()
-
+// OpenReader untars source and decompresses the contents into destination.
+func (tarSzFormat) OpenReader(f io.Reader, destination string) error {
 	szr := snappy.NewReader(f)
 	return untar(tar.NewReader(szr), destination)
 }

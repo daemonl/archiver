@@ -3,6 +3,7 @@ package archiver
 import (
 	"archive/tar"
 	"fmt"
+	"io"
 	"os"
 	"strings"
 
@@ -13,7 +14,7 @@ import (
 var TarXZ xzFormat
 
 func init() {
-	RegisterFormat("TarXZ", TarXZ)
+	RegisterFormatReaderWriter("TarXZ", TarXZ)
 }
 
 type xzFormat struct{}
@@ -48,41 +49,27 @@ func isTarXz(tarxzPath string) bool {
 	return hasTarHeader(buf)
 }
 
-// Make creates a .tar.xz file at xzPath containing
-// the contents of files listed in filePaths. File
-// paths can be those of regular files or directories.
-// Regular files are stored at the 'root' of the
-// archive, and directories are recursively added.
-func (xzFormat) Make(xzPath string, filePaths []string) error {
-	out, err := os.Create(xzPath)
-	if err != nil {
-		return fmt.Errorf("error creating %s: %v", xzPath, err)
-	}
-	defer out.Close()
-
+// MarkWriter the contents of files listed in filePaths in .tar.xz format. File
+// paths can be those of regular files or directories.  Regular files are
+// stored at the 'root' of the archive, and directories are recursively added.
+func (xzFormat) MakeWriter(out io.Writer, filePaths []string, exclusions []string) error {
 	xzWriter, err := xz.NewWriter(out)
 	if err != nil {
-		return fmt.Errorf("error compressing %s: %v", xzPath, err)
+		return fmt.Errorf("error compressing: %v", err)
 	}
 	defer xzWriter.Close()
 
 	tarWriter := tar.NewWriter(xzWriter)
 	defer tarWriter.Close()
 
-	return tarball(filePaths, tarWriter, xzPath)
+	return tarball(filePaths, tarWriter, exclusions)
 }
 
 // Open untars source and decompresses the contents into destination.
-func (xzFormat) Open(source, destination string) error {
-	f, err := os.Open(source)
-	if err != nil {
-		return fmt.Errorf("%s: failed to open archive: %v", source, err)
-	}
-	defer f.Close()
-
+func (xzFormat) OpenReader(f io.Reader, destination string) error {
 	xzReader, err := xz.NewReader(f)
 	if err != nil {
-		return fmt.Errorf("error decompressing %s: %v", source, err)
+		return fmt.Errorf("error decompressing: %v", err)
 	}
 
 	return untar(tar.NewReader(xzReader), destination)

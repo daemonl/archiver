@@ -15,8 +15,44 @@ type Archiver interface {
 	Match(filename string) bool
 	// Make makes an archive.
 	Make(destination string, sources []string) error
+	// MakeWriter writes an archive to an io.Write
+	MakeWriter(destination io.Writer, sources []string, exclude []string) error
 	// Open extracts an archive.
 	Open(source, destination string) error
+	// OpenReader extracts an archive from an io.Reader
+	OpenReader(source io.Reader, destination string) error
+}
+
+type ArchiverReaderWriter interface {
+	// Match checks supported files
+	Match(filename string) bool
+	// MakeWriter writes an archive to an io.Write
+	MakeWriter(destination io.Writer, sources []string, exclude []string) error
+	// OpenReader extracts an archive from an io.Reader
+	OpenReader(source io.Reader, destination string) error
+}
+
+type archiverReaderWriterExtend struct {
+	ArchiverReaderWriter
+}
+
+func (format archiverReaderWriterExtend) Make(destination string, sources []string) error {
+	out, err := os.Create(destination)
+	if err != nil {
+		return fmt.Errorf("error creating %s: %v", destination, err)
+	}
+	defer out.Close()
+	return format.MakeWriter(out, sources, []string{destination})
+}
+
+func (format archiverReaderWriterExtend) Open(source, destination string) error {
+
+	f, err := os.Open(source)
+	if err != nil {
+		return fmt.Errorf("%s: failed to open archive: %v", source, err)
+	}
+	defer f.Close()
+	return format.OpenReader(f, destination)
 }
 
 // SupportedFormats contains all supported archive formats
@@ -29,6 +65,12 @@ func RegisterFormat(name string, format Archiver) {
 		return
 	}
 	SupportedFormats[name] = format
+}
+
+func RegisterFormatReaderWriter(name string, format ArchiverReaderWriter) {
+	RegisterFormat(name, archiverReaderWriterExtend{
+		ArchiverReaderWriter: format,
+	})
 }
 
 func writeNewFile(fpath string, in io.Reader, fm os.FileMode) error {

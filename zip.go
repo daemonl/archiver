@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"os"
 	"path"
 	"path/filepath"
@@ -17,7 +18,7 @@ import (
 var Zip zipFormat
 
 func init() {
-	RegisterFormat("Zip", Zip)
+	RegisterFormatReaderWriter("Zip", Zip)
 }
 
 type zipFormat struct{}
@@ -51,16 +52,11 @@ func isZip(zipPath string) bool {
 //
 // Files with an extension for formats that are already
 // compressed will be stored only, not compressed.
-func (zipFormat) Make(zipPath string, filePaths []string) error {
-	out, err := os.Create(zipPath)
-	if err != nil {
-		return fmt.Errorf("error creating %s: %v", zipPath, err)
-	}
-	defer out.Close()
+func (zipFormat) MakeWriter(out io.Writer, filePaths []string, exclusions []string) error {
 
 	w := zip.NewWriter(out)
 	for _, fpath := range filePaths {
-		err = zipFile(w, fpath)
+		err := zipFile(w, fpath)
 		if err != nil {
 			w.Close()
 			return err
@@ -134,12 +130,34 @@ func zipFile(w *zip.Writer, source string) error {
 }
 
 // Open unzips the .zip file at source into destination.
-func (zipFormat) Open(source, destination string) error {
-	r, err := zip.OpenReader(source)
-	if err != nil {
-		return err
+func (zipFormat) OpenReader(source io.Reader, destination string) error {
+
+	var r *zip.Reader
+	if sourceFile, ok := source.(*os.File); ok {
+		stat, err := sourceFile.Stat()
+		if err != nil {
+			return err
+		}
+		size := stat.Size()
+		r, err = zip.NewReader(sourceFile, size)
+		if err != nil {
+			return err
+		}
+	} else {
+		tmpFile, err := ioutil.TempFile("", "")
+		if err != nil {
+			return err
+		}
+		defer tmpFile.Close()
+		size, err := io.Copy(tmpFile, source)
+		if err != nil {
+			return err
+		}
+		r, err = zip.NewReader(tmpFile, size)
+		if err != nil {
+			return err
+		}
 	}
-	defer r.Close()
 
 	for _, zf := range r.File {
 		if err := unzipFile(zf, destination); err != nil {

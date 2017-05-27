@@ -4,6 +4,7 @@ import (
 	"archive/tar"
 	"compress/gzip"
 	"fmt"
+	"io"
 	"os"
 	"strings"
 )
@@ -12,7 +13,7 @@ import (
 var TarGz tarGzFormat
 
 func init() {
-	RegisterFormat("TarGz", TarGz)
+	RegisterFormatReaderWriter("TarGz", TarGz)
 }
 
 type tarGzFormat struct{}
@@ -47,36 +48,23 @@ func isTarGz(targzPath string) bool {
 	return hasTarHeader(buf)
 }
 
-// Make creates a .tar.gz file at targzPath containing
-// the contents of files listed in filePaths. It works
-// the same way Tar does, but with gzip compression.
-func (tarGzFormat) Make(targzPath string, filePaths []string) error {
-	out, err := os.Create(targzPath)
-	if err != nil {
-		return fmt.Errorf("error creating %s: %v", targzPath, err)
-	}
-	defer out.Close()
-
+// MakeWriter writes the contents of files listed in filePaths to the writer in
+// .tar.gz format. It works the same way Tar does, but with gzip compression.
+func (tarGzFormat) MakeWriter(out io.Writer, filePaths []string, exclusions []string) error {
 	gzWriter := gzip.NewWriter(out)
 	defer gzWriter.Close()
 
 	tarWriter := tar.NewWriter(gzWriter)
 	defer tarWriter.Close()
 
-	return tarball(filePaths, tarWriter, targzPath)
+	return tarball(filePaths, tarWriter, exclusions)
 }
 
-// Open untars source and decompresses the contents into destination.
-func (tarGzFormat) Open(source, destination string) error {
-	f, err := os.Open(source)
-	if err != nil {
-		return fmt.Errorf("%s: failed to open archive: %v", source, err)
-	}
-	defer f.Close()
-
+// OpenReader untars source and decompresses the contents into destination.
+func (tarGzFormat) OpenReader(f io.Reader, destination string) error {
 	gzr, err := gzip.NewReader(f)
 	if err != nil {
-		return fmt.Errorf("%s: create new gzip reader: %v", source, err)
+		return fmt.Errorf("create new gzip reader: %v", err)
 	}
 	defer gzr.Close()
 

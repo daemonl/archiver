@@ -2,7 +2,7 @@ package archiver
 
 import (
 	"archive/tar"
-	"fmt"
+	"io"
 	"os"
 	"strings"
 
@@ -13,7 +13,7 @@ import (
 var TarLz4 tarLz4Format
 
 func init() {
-	RegisterFormat("TarLz4", TarLz4)
+	RegisterFormatReaderWriter("TarLz4", TarLz4)
 }
 
 type tarLz4Format struct{}
@@ -41,35 +41,22 @@ func isTarLz4(tarlz4Path string) bool {
 	return hasTarHeader(buf)
 }
 
-// Make creates a .tar.lz4 file at tarlz4Path containing
-// the contents of files listed in filePaths. File paths
-// can be those of regular files or directories. Regular
-// files are stored at the 'root' of the archive, and
-// directories are recursively added.
-func (tarLz4Format) Make(tarlz4Path string, filePaths []string) error {
-	out, err := os.Create(tarlz4Path)
-	if err != nil {
-		return fmt.Errorf("error creating %s: %v", tarlz4Path, err)
-	}
-	defer out.Close()
-
+// MakeWriter writes the contents of files listed in filePaths to the writer in
+// .tar.lz4 format. File paths can be those of regular files or directories.
+// Regular files are stored at the 'root' of the archive, and directories are
+// recursively added.
+func (tarLz4Format) MakeWriter(out io.Writer, filePaths []string, exclusions []string) error {
 	lz4Writer := lz4.NewWriter(out)
 	defer lz4Writer.Close()
 
 	tarWriter := tar.NewWriter(lz4Writer)
 	defer tarWriter.Close()
 
-	return tarball(filePaths, tarWriter, tarlz4Path)
+	return tarball(filePaths, tarWriter, exclusions)
 }
 
-// Open untars source and decompresses the contents into destination.
-func (tarLz4Format) Open(source, destination string) error {
-	f, err := os.Open(source)
-	if err != nil {
-		return fmt.Errorf("%s: failed to open archive: %v", source, err)
-	}
-	defer f.Close()
-
+// OpenReader untars source and decompresses the contents into destination.
+func (tarLz4Format) OpenReader(f io.Reader, destination string) error {
 	lz4r := lz4.NewReader(f)
 	return untar(tar.NewReader(lz4r), destination)
 }

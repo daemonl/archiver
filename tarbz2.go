@@ -3,6 +3,7 @@ package archiver
 import (
 	"archive/tar"
 	"fmt"
+	"io"
 	"os"
 	"strings"
 
@@ -13,7 +14,7 @@ import (
 var TarBz2 tarBz2Format
 
 func init() {
-	RegisterFormat("TarBz2", TarBz2)
+	RegisterFormatReaderWriter("TarBz2", TarBz2)
 }
 
 type tarBz2Format struct{}
@@ -48,41 +49,28 @@ func isTarBz2(tarbz2Path string) bool {
 	return hasTarHeader(buf)
 }
 
-// Make creates a .tar.bz2 file at tarbz2Path containing
-// the contents of files listed in filePaths. File paths
-// can be those of regular files or directories. Regular
-// files are stored at the 'root' of the archive, and
-// directories are recursively added.
-func (tarBz2Format) Make(tarbz2Path string, filePaths []string) error {
-	out, err := os.Create(tarbz2Path)
-	if err != nil {
-		return fmt.Errorf("error creating %s: %v", tarbz2Path, err)
-	}
-	defer out.Close()
-
+// MakeWriter writes the contents of files listed in filePaths to the writer in
+// tar.bz2 format. File paths can be those of regular files or directories.
+// Regular files are stored at the 'root' of the archive, and directories are
+// recursively added.
+func (tarBz2Format) MakeWriter(out io.Writer, filePaths []string, exclusions []string) error {
 	bz2Writer, err := bzip2.NewWriter(out, nil)
 	if err != nil {
-		return fmt.Errorf("error compressing %s: %v", tarbz2Path, err)
+		return fmt.Errorf("error compressing: %v", err)
 	}
 	defer bz2Writer.Close()
 
 	tarWriter := tar.NewWriter(bz2Writer)
 	defer tarWriter.Close()
 
-	return tarball(filePaths, tarWriter, tarbz2Path)
+	return tarball(filePaths, tarWriter, exclusions)
 }
 
-// Open untars source and decompresses the contents into destination.
-func (tarBz2Format) Open(source, destination string) error {
-	f, err := os.Open(source)
-	if err != nil {
-		return fmt.Errorf("%s: failed to open archive: %v", source, err)
-	}
-	defer f.Close()
-
+// OpenReader untars source and decompresses the contents into destination.
+func (tarBz2Format) OpenReader(f io.Reader, destination string) error {
 	bz2r, err := bzip2.NewReader(f, nil)
 	if err != nil {
-		return fmt.Errorf("error decompressing %s: %v", source, err)
+		return fmt.Errorf("error decompressing: %v", err)
 	}
 	defer bz2r.Close()
 

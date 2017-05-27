@@ -15,7 +15,7 @@ import (
 var Rar rarFormat
 
 func init() {
-	RegisterFormat("Rar", Rar)
+	RegisterFormatReaderWriter("Rar", Rar)
 }
 
 type rarFormat struct{}
@@ -45,22 +45,16 @@ func isRar(rarPath string) bool {
 // Make makes a .rar archive, but this is not implemented because
 // RAR is a proprietary format. It is here only for symmetry with
 // the other archive formats in this package.
-func (rarFormat) Make(rarPath string, filePaths []string) error {
-	return fmt.Errorf("make %s: RAR not implemented (proprietary format)", rarPath)
+func (rarFormat) MakeWriter(writer io.Writer, filePaths []string, exclude []string) error {
+	return fmt.Errorf("RAR not implemented (proprietary format)")
 }
 
-// Open extracts the RAR file at source and puts the contents
+// OpenReader extracts the RAR file at source and puts the contents
 // into destination.
-func (rarFormat) Open(source, destination string) error {
-	f, err := os.Open(source)
-	if err != nil {
-		return fmt.Errorf("%s: failed to open archive: %v", source, err)
-	}
-	defer f.Close()
-
+func (rarFormat) OpenReader(f io.Reader, destination string) error {
 	rr, err := rardecode.NewReader(f, "")
 	if err != nil {
-		return fmt.Errorf("%s: failed to create reader: %v", source, err)
+		return fmt.Errorf("failed to create reader: %v", err)
 	}
 
 	for {

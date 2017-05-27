@@ -2,6 +2,7 @@ package archiver
 
 import (
 	"bytes"
+	"io"
 	"io/ioutil"
 	"os"
 	"path/filepath"
@@ -14,8 +15,10 @@ func TestArchiver(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 			// skip RAR for now
-			if _, ok := ar.(rarFormat); ok {
-				t.Skip("not supported")
+			if arrw, ok := ar.(archiverReaderWriterExtend); ok {
+				if _, ok := arrw.ArchiverReaderWriter.(rarFormat); ok {
+					t.Skip("not supported")
+				}
 			}
 			symmetricTest(t, name, ar)
 		})
@@ -49,10 +52,15 @@ func symmetricTest(t *testing.T, name string, ar Archiver) {
 		return nil
 	})
 
+	outfileFile, err := os.Open(outfile)
+	if err != nil {
+		t.Fatal(err.Error())
+	}
+
 	// Test extracting archive
 	dest := filepath.Join(tmp, "extraction_test")
 	os.Mkdir(dest, 0755)
-	err = ar.Open(outfile, dest)
+	err = ar.OpenReader(io.TeeReader(outfileFile, ioutil.Discard), dest) // Drop ReadAdd interface
 	if err != nil {
 		t.Fatalf("extracting archive [%s -> %s]: didn't expect an error, but got: %v", outfile, dest, err)
 	}
@@ -128,8 +136,10 @@ func BenchmarkMake(b *testing.B) {
 		name, ar := name, ar
 		b.Run(name, func(b *testing.B) {
 			// skip RAR for now
-			if _, ok := ar.(rarFormat); ok {
-				b.Skip("not supported")
+			if arrw, ok := ar.(archiverReaderWriterExtend); ok {
+				if _, ok := arrw.ArchiverReaderWriter.(rarFormat); ok {
+					b.Skip("not supported")
+				}
 			}
 			outfile := filepath.Join(tmp, "benchMake-"+name)
 			for i := 0; i < b.N; i++ {
@@ -153,8 +163,10 @@ func BenchmarkOpen(b *testing.B) {
 		name, ar := name, ar
 		b.Run(name, func(b *testing.B) {
 			// skip RAR for now
-			if _, ok := ar.(rarFormat); ok {
-				b.Skip("not supported")
+			if arrw, ok := ar.(archiverReaderWriterExtend); ok {
+				if _, ok := arrw.ArchiverReaderWriter.(rarFormat); ok {
+					b.Skip("not supported")
+				}
 			}
 			// prepare a archive
 			outfile := filepath.Join(tmp, "benchMake-"+name)
